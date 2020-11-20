@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Основы JavaScript двигателей - формы и встроенные кэши</title>
+	<style>
+            body {margin: 5% auto; background: #f2f2f2; color: #444444; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.8; text-shadow: 0 1px 0 #ffffff; max-width: 73%;}
+            code {background: white;}
+            a {border-bottom: 1px solid #444444; color: #444444; text-decoration: none;}
+            a:hover {border-bottom: 0;}
+    </style>
+</head>
+<body>
+<h1>Основы JavaScript движков: Формы и Встроенные Кэши</h1>
+
+<p>Статья рассматривает общие для всех движков основы.</p>
+
+<p>Отступление.<br>
+Profilling data - суть есть профилирование типов данных, исползуемых в js коде. JavaScript язык с динамической типизацией. Чтобы сгенерировать машинный код, нужно от чего-то отталкиваться, например, что функция вызывалась только с аргументами типа int. Думаю название "профиль данных" отражает суть этого понятия.</p>
+
+<h2>Конвеер JavaScript движка</h2>
+
+<p>Все начинается с исходного кода. Движок парсит исходный код и создает абстрактное синтаксическое дерево (AST). На основе AST, интерпретатор создает байткод. На этой стадии движок исполняет JavaScript код.</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/js-engine-pipeline-20180614.svg"></p>
+
+<p>Чтобы код исполнялся быстрее, байткод может быть отправлен оптимизирующему компилятору вместе с профилем данных. Оптимизирующий компилятор делает предположения о данных на основе их профиля и создает оптимизированный машинный код.<br>
+Если на каком-то этапе предположения оказываются неверными, компилятор деоптимизирует код и передает исполнение кода в интерпретатор.</p>
+
+<p>Теперь пройдёмся по участкам конвеера более подробно и рассмотрим различия конвееров разных js движков.</p>
+
+<p>В общем и целом, конвеер содержит интерпретатор и оптимизирующий компилятор. Интерпретатор генерирует неоптимизированный байткод быстро, а компилятору нужно время для генерации машинного кода, но этот код работает быстрее байткода.</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/interpreter-optimizing-compiler-20180614.svg"></p>
+
+<p>Конвеер V8 (Chrome).</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/interpreter-optimizing-compiler-v8-20180614.svg"></p>
+
+<p>Интерпретатор называется Ignition, оптимизирующий компилятор называется TurboFan. Ignition отвечает за генерацию и исполнение байткода. TurboFan - за генерацию оптимизированного машинного кода. Во время выполнения байткода, Ignition собирает профиль данных. Когда функция становится "горячей" (вызывается очень часто), байткод и профиль данных передаются компилятору TurboFan, чтобы он сгенерировал оптимизированнй машинный код, используя профиль данных.</p>
+
+<p>Конвеер SpiderMonkey (FireFox)</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/interpreter-optimizing-compiler-spidermonkey-20180614.svg"/></p>
+
+<p>Конвеер состоит из интерпретатора и двух компиляторов. Интерпретатор передает байткод и профиль данных компилятору Baseline. Baseline генерирует слабо оптимизированный машинный код. Следующий компилятор, IonMonkey, генерирует уже высоко оптимизированный машинный код.</p>
+
+<p>
+Прим. ChackraCore не рассматривается т.к. проект заброшен мелкомягкими.</p>
+
+<p>Конвеер JavaScriptCore (Safari)</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/interpreter-optimizing-compiler-jsc-20180614.svg"></p>
+
+<p>Конвеер состоит из интерпретатора и (аж) трех компиляторов. Интерпретатор LLInt (Low Level Interpreter) передаёт байткод и профиль данных компилятору Baseline (слабая оптимизация). Тот в свою очередь передает код компилятору DFG (Data Flow Graph, средняя оптимизация). DFG передает код FTL (Faster Than Light, максимальная оптимизация).</p>
+
+<p>Почему некоторые движки содержат больше компиляторов нежели другие? Все дело в компромисах. Интерпретатор генерирует байткод быстро, но байткод не эффективен. С другой стороны, компилятор генерирует код дольше, но получается более эффективный машинный код. Получается нужен компромисс между быстротой генерации кода (интерпретатор) и быстротой получаемого кода (компилятор). Некоторые движки добавили несколько компиляторов с разными показателями времени\эффективности, что позволяет более детально контролировать компромисс между временем\эффективностью, но при более высокой сложности движка. Другие компромиссы связаны с использованием памяти.</p>
+
+<p>Мы обозначили основные различия конвееров каждого js движка. Но помимо этих различий, на более высоком уровне, все js движки имеют одинаковую архитектуру: парсер и конвеер интерпретутор\компилятор.</p>
+
+<p></p>
+
+<p>Объектная модель JavaScript</p>
+
+<p>Теперь посмотрим, что еще общего у js движков в плане реализации некоторых аспектов языка JavaScript.</p>
+
+<p>Например, как js движки реализуют объектную модель языка и как они повышают скорость доступа к свойствам объектов JavaScript. Все js движки реализуют этот аспект очень похоже.</p>
+
+<p>Спецификация языка определяет все объекты как словари, где каждый строковый ключ соответствует аттрибутам свойства.</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/object-model-20180614.svg"></p>
+
+<p>Помимо самого значения свойства [[Value]], спека определяет следующие аттрибуты свойства:<br>
+- [[Writable]] может ли свойство изменяться<br>
+- [[Enumerable]] может ли свойство использоваться в циклах for - in.<br>
+- [[Configurable]] может ли свойство быть удалено.</p>
+
+<p>Двойные квадратные скобки используются в спеке для аттрибутов, которые не отображаются напрямую в JavaScript. Но к ним можно получить доступ через Object.getOwnPropertyDescriptor API:</p>
+
+<!-- HTML generated using hilite.me -->
+<div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">const</span> object <span style="color: #333333">=</span> { foo<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">42</span> };
+<span style="color: #007020">Object</span>.getOwnPropertyDescriptor(object, <span style="background-color: #fff0f0">&quot;foo&quot;</span>);
+<span style="color: #888888">// → { value: 42, writable: true, enumerable: true, configurable: true }</span>
+</pre></div>
+
+
+<p>Ок, так JavaScript определяет объекты. Что насчет массивов?</p>
+
+<p>Можно думать о массивах, как о специальных объектах. Одно различие состоит в обращении с индексами массива. Индекс массива - в спеке это спец термин (array index). Массив может содержать 2³²−1 элементов. Индекс массива это любое число в границах этого числа - от 0 до 2³²−2.</p>
+
+<p>Другое отличие в наличии у массивов магического свойства длины (length).</p>
+
+<!-- HTML generated using hilite.me --><div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">const</span> array <span style="color: #333333">=</span> [<span style="background-color: #fff0f0">&quot;a&quot;</span>, <span style="background-color: #fff0f0">&quot;b&quot;</span>];
+array.length; <span style="color: #888888">// → 2</span>
+array[<span style="color: #0000DD; font-weight: bold">2</span>] <span style="color: #333333">=</span> <span style="background-color: #fff0f0">&quot;c&quot;</span>;
+array.length; <span style="color: #888888">// → 3</span>
+</pre></div>
+
+
+<p>В примере, массив имеет длину 2 после создания. После присвоения значения "c" по индексу 2, длина массива автоматически увеличилась.</p>
+
+<p>JavaScript определяет массивы похожими на объекты. Например, все ключи, включая индексы массива представлены строками. Первый элемент массива соответствует ключу '0'.</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/array-1-20180614.svg"></p>
+
+<p>Свойство length просто еще одно свойство массива, которое не является перечеслимым и конфигурируемым.</p>
+
+<p>Когда в массив добавляется новый элемент, у свойства length автоматически обновляется аттрибут [[Value]].</p>
+
+<p><img src="https://benediktmeurer.de/images/2018/array-2-20180614.svg"></p>
+
+<p>В общем, массивы ведут себя, как JavaScript объекты.</p>
+
+<p></p>
+
+<p></p>
+
+<p>
+Оптимизация доступа к свойствам</p>
+
+<p>
+Теперь, зная, как устроены объекты, рассмотрим, как js движки оптимизируют работу с объектами.<br>
+Самой распространенной операций в js программах является доступ к свойствам объектов. Поэтому очень важно сделать доступ к свойствам быстрым.</p>
+
+<!-- HTML generated using hilite.me --><div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">const</span> object <span style="color: #333333">=</span> {
+  foo<span style="color: #333333">:</span> <span style="background-color: #fff0f0">&quot;bar&quot;</span>,
+  baz<span style="color: #333333">:</span> <span style="background-color: #fff0f0">&quot;qux&quot;</span>
+};
+
+<span style="color: #888888">// Here, we’re accessing the property `foo` on `object`:</span>
+doSomething(object.foo);
+<span style="color: #888888">//          ^^^^^^^^^^</span>
+</pre></div>
+
+
+<p>
+Формы (Shapes)</p>
+
+<p>В js программах часто встречаются объекты с одинаковыми названиями свойств. Такие объекты имеют одинаковую форму.</p>
+
+<!-- HTML generated using hilite.me --><div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">const</span> object1 <span style="color: #333333">=</span> { x<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">1</span>, y<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">2</span> };
+<span style="color: #008800; font-weight: bold">const</span> object2 <span style="color: #333333">=</span> { x<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">3</span>, y<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">4</span> };
+<span style="color: #888888">// `object1` and `object2` have the same shape.</span>
+</pre></div>
+
+
+<p>Так же очень часто используется доступ к одному и тому же свойству объектов с одинаковой формой.</p>
+
+<!-- HTML generated using hilite.me --><div style="background: #ffffff; overflow:auto;width:auto;border:solid gray;border-width:.1em .1em .1em .8em;padding:.2em .6em;"><pre style="margin: 0; line-height: 125%"><span style="color: #008800; font-weight: bold">function</span> logX(object) {
+  console.log(object.x);
+  <span style="color: #888888">//          ^^^^^^^^</span>
+}
+
+<span style="color: #008800; font-weight: bold">const</span> object1 <span style="color: #333333">=</span> { x<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">1</span>, y<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">2</span> };
+<span style="color: #008800; font-weight: bold">const</span> object2 <span style="color: #333333">=</span> { x<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">3</span>, y<span style="color: #333333">:</span> <span style="color: #0000DD; font-weight: bold">4</span> };
+
+logX(object1);
+logX(object2);
+</pre></div>
+
+
+<p>Учитывая это, js движки оптимизируют доступ к свойствам объекта на основе их формы. Вот как это работает.</p>
+<p></p>
+
+<img src="https://benediktmeurer.de/images/2018/object-model-20180614.svg">
+
+
+
+</body>
+</html>
